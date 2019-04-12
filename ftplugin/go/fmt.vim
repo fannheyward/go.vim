@@ -23,47 +23,47 @@
 "       Flag naming the gofmt executable to use.
 "
 if exists("b:did_ftplugin_go_fmt")
-    finish
+  finish
 endif
 
 if !exists("g:go_fmt_commands")
-    let g:go_fmt_commands = 1
+  let g:go_fmt_commands = 1
 endif
 
 if !exists("g:gofmt_command")
-    let g:gofmt_command = "gofmt"
+  let g:gofmt_command = "gofmt"
 endif
 
 if g:go_fmt_commands
-    command! -buffer Fmt call s:GoFormat()
+  command! -buffer Fmt call s:GoFormat()
 endif
 
 function! s:GoFormat()
-    let view = winsaveview()
-    silent execute "%!" . g:gofmt_command
-    if v:shell_error
-        let errors = []
-        for line in getline(1, line('$'))
-            let tokens = matchlist(line, '^\(.\{-}\):\(\d\+\):\(\d\+\)\s*\(.*\)')
-            if !empty(tokens)
-                call add(errors, {"filename": @%,
-                                 \"lnum":     tokens[2],
-                                 \"col":      tokens[3],
-                                 \"text":     tokens[4]})
-            endif
-        endfor
-        if empty(errors)
-            % | " Couldn't detect gofmt error format, output errors
-        endif
-        undo
-        if !empty(errors)
-            call setqflist(errors, 'r')
-        endif
-        echohl Error | echomsg "Gofmt returned error" | echohl None
+  let view = winsaveview()
+  silent execute "%!" . g:gofmt_command
+  if v:shell_error
+    let errors = []
+    for line in getline(1, line('$'))
+      let tokens = matchlist(line, '^\(.\{-}\):\(\d\+\):\(\d\+\)\s*\(.*\)')
+      if !empty(tokens)
+        call add(errors, {"filename": @%,
+              \"lnum":     tokens[2],
+              \"col":      tokens[3],
+              \"text":     tokens[4]})
+      endif
+    endfor
+    if empty(errors)
+      % | " Couldn't detect gofmt error format, output errors
     endif
-    call winrestview(view)
+    undo
+    if !empty(errors)
+      call setqflist(errors, 'r')
+    endif
+    echohl Error | echomsg "Gofmt returned error" | echohl None
+  endif
+  call winrestview(view)
 endfunction
 
 let b:did_ftplugin_go_fmt = 1
 
-" vim:ts=4:sw=4:et
+" vim:ts=2:sw=2:et
