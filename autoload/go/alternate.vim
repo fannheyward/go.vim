@@ -22,7 +22,7 @@ function! go#alternate#Switch(bang, cmd) abort
     call go#util#EchoError("couldn't find ".alt_file)
     return
   elseif empty(a:cmd)
-    execute ":" . go#config#AlternateMode() . " " . alt_file
+    execute ":edit " . alt_file
   else
     execute ":" . a:cmd . " " . alt_file
   endif

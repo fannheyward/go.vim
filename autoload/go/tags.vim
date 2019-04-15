@@ -7,7 +7,7 @@ function! go#tags#Add(start, end, count, ...) abort
   let fname = fnamemodify(expand("%"), ':p:gs?\\?/?')
   let offset = 0
   if a:count == -1
-    let offset = line2byte(line('.')) + (col('.')-2)
+    let offset = go#util#OffsetCursor()
   endif
 
   let test_mode = 0
@@ -19,7 +19,7 @@ function! go#tags#Remove(start, end, count, ...) abort
   let fname = fnamemodify(expand("%"), ':p:gs?\\?/?')
   let offset = 0
   if a:count == -1
-    let offset = line2byte(line('.')) + (col('.')-2)
+    let offset = go#util#OffsetCursor()
   endif
 
   let test_mode = 0
@@ -37,7 +37,7 @@ function! go#tags#run(start, end, offset, mode, fname, test_mode, ...) abort
 
   let l:result = s:create_cmd(args)
   if has_key(result, 'err')
-    echomsg result.err
+    call go#util#EchoError(result.err)
     return -1
   endif
 
@@ -113,13 +113,17 @@ func s:create_cmd(args) abort
     return {'err': "requires 'json_decode'. Update your Vim/Neovim version."}
   endif
 
-  let bin_path = 'gomodifytags'
+  let bin_path = go#path#CheckBinPath('gomodifytags')
+  if empty(bin_path)
+    return {'err': "gomodifytags does not exist"}
+  endif
+
   let l:start = a:args.start
   let l:end = a:args.end
   let l:offset = a:args.offset
   let l:mode = a:args.mode
   let l:cmd_args = a:args.cmd_args
-  let l:modifytags_transform = go#config#AddtagsTransform()
+  let l:modifytags_transform = 'snakecase'
 
   " start constructing the command
   let cmd = [bin_path]

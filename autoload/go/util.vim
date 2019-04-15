@@ -4,17 +4,11 @@ set cpo&vim
 
 " PathSep returns the appropriate OS specific path separator.
 function! go#util#PathSep() abort
-  if go#util#IsWin()
-    return '\'
-  endif
   return '/'
 endfunction
 
 " PathListSep returns the appropriate OS specific path list separator.
 function! go#util#PathListSep() abort
-  if go#util#IsWin()
-    return ";"
-  endif
   return ":"
 endfunction
 
@@ -33,53 +27,6 @@ endfunction
 " Separator if necessary and returns the result
 function! go#util#Join(...) abort
   return join(a:000, go#util#PathSep())
-endfunction
-
-" IsWin returns 1 if current OS is Windows or 0 otherwise
-function! go#util#IsWin() abort
-  let win = ['win16', 'win32', 'win64', 'win95']
-  for w in win
-    if (has(w))
-      return 1
-    endif
-  endfor
-
-  return 0
-endfunction
-
-" IsMac returns 1 if current OS is macOS or 0 otherwise.
-function! go#util#IsMac() abort
-  return has('mac') ||
-        \ has('macunix') ||
-        \ has('gui_macvim') ||
-        \ go#util#Exec(['uname'])[0] =~? '^darwin'
-endfunction
-
- " Checks if using:
- " 1) Windows system,
- " 2) And has cygpath executable,
- " 3) And uses *sh* as 'shell'
-function! go#util#IsUsingCygwinShell()
-  return go#util#IsWin() && executable('cygpath') && &shell =~ '.*sh.*'
-endfunction
-
-" Check if Vim jobs API is supported.
-"
-" The (optional) first parameter can be added to indicate the 'cwd' or 'env'
-" parameters will be used, which wasn't added until a later version.
-function! go#util#has_job(...) abort
-  if has('nvim')
-    return 1
-  endif
-
-  " cwd and env parameters to job_start was added in this version.
-  if a:0 > 0 && a:1 is 1
-    return has('job') && has("patch-8.0.0902")
-  endif
-
-  " job was introduced in 7.4.xxx however there are multiple bug fixes and one
-  " of the latest is 8.0.0087 which is required for a stable async API.
-  return has('job') && has("patch-8.0.0087")
 endfunction
 
 let s:env_cache = {}
@@ -153,7 +100,7 @@ function! s:system(cmd, ...) abort
   let l:shellredir = &shellredir
   let l:shellcmdflag = &shellcmdflag
 
-  if !go#util#IsWin() && executable('/bin/sh')
+  if executable('/bin/sh')
       set shell=/bin/sh shellredir=>%s\ 2>&1 shellcmdflag=-c
   endif
 
@@ -184,6 +131,13 @@ function! go#util#Exec(cmd, ...) abort
 
   let l:bin = a:cmd[0]
 
+  " Lookup the full path, respecting settings such as 'go_bin_path'. On errors,
+  " CheckBinPath will show a warning for us.
+  let l:bin = go#path#CheckBinPath(l:bin)
+  if empty(l:bin)
+    return ['', 1]
+  endif
+
   " Finally execute the command using the full, resolved path. Do not pass the
   " unmodified command as the correct program might not exist in $PATH.
   return call('s:exec', [[l:bin] + a:cmd[1:]] + a:000)
@@ -208,10 +162,6 @@ endfunction
 function! s:exec(cmd, ...) abort
   let l:bin = a:cmd[0]
   let l:cmd = go#util#Shelljoin([l:bin] + a:cmd[1:])
-  if go#util#HasDebug('shell-commands')
-    call go#util#EchoInfo('shell command: ' . l:cmd)
-  endif
-
   let l:out = call('s:system', [l:cmd] + a:000)
   return [l:out, go#util#ShellError()]
 endfunction
@@ -253,31 +203,6 @@ function! go#util#Shelljoin(arglist, ...) abort
   endtry
 endfunction
 
-fu! go#util#Shellescape(arg)
-  try
-    let ssl_save = &shellslash
-    set noshellslash
-    return shellescape(a:arg)
-  finally
-    let &shellslash = ssl_save
-  endtry
-endf
-
-" Shelllist returns a shell-safe representation of the items in the given
-" arglist. The {special} argument of shellescape() may optionally be passed.
-function! go#util#Shelllist(arglist, ...) abort
-  try
-    let ssl_save = &shellslash
-    set noshellslash
-    if a:0
-      return map(copy(a:arglist), 'shellescape(v:val, ' . a:1 . ')')
-    endif
-    return map(copy(a:arglist), 'shellescape(v:val)')
-  finally
-    let &shellslash = ssl_save
-  endtry
-endfunction
-
 " Returns the byte offset for line and column
 function! go#util#Offset(line, col) abort
   if &encoding != 'utf-8'
@@ -292,61 +217,6 @@ endfunction
 " Returns the byte offset for the cursor
 function! go#util#OffsetCursor() abort
   return go#util#Offset(line('.'), col('.'))
-endfunction
-
-" Windo is like the built-in :windo, only it returns to the window the command
-" was issued from
-function! go#util#Windo(command) abort
-  let s:currentWindow = winnr()
-  try
-    execute "windo " . a:command
-  finally
-    execute s:currentWindow. "wincmd w"
-    unlet s:currentWindow
-  endtry
-endfunction
-
-" snippetcase converts the given word to given preferred snippet setting type
-" case.
-function! go#util#snippetcase(word) abort
-  let l:snippet_case = go#config#AddtagsTransform()
-  if l:snippet_case == "snakecase"
-    return go#util#snakecase(a:word)
-  elseif l:snippet_case == "camelcase"
-    return go#util#camelcase(a:word)
-  else
-    return a:word " do nothing
-  endif
-endfunction
-
-" snakecase converts a string to snake case. i.e: FooBar -> foo_bar
-" Copied from tpope/vim-abolish
-function! go#util#snakecase(word) abort
-  let word = substitute(a:word, '::', '/', 'g')
-  let word = substitute(word, '\(\u\+\)\(\u\l\)', '\1_\2', 'g')
-  let word = substitute(word, '\(\l\|\d\)\(\u\)', '\1_\2', 'g')
-  let word = substitute(word, '[.-]', '_', 'g')
-  let word = tolower(word)
-  return word
-endfunction
-
-" camelcase converts a string to camel case. e.g. FooBar or foo_bar will become
-" fooBar.
-" Copied from tpope/vim-abolish.
-function! go#util#camelcase(word) abort
-  let word = substitute(a:word, '-', '_', 'g')
-  if word !~# '_' && word =~# '\l'
-    return substitute(word, '^.', '\l&', '')
-  else
-    return substitute(word, '\C\(_\)\=\(.\)', '\=submatch(1)==""?tolower(submatch(2)) : toupper(submatch(2))','g')
-  endif
-endfunction
-
-" pascalcase converts a string to 'PascalCase'. e.g. fooBar or foo_bar will
-" become FooBar.
-function! go#util#pascalcase(word) abort
-  let word = go#util#camelcase(a:word)
-  return toupper(word[0]) . word[1:]
 endfunction
 
 " Echo a message to the screen and highlight it with the group in a:hi.
@@ -365,7 +235,7 @@ function! s:echo(msg, hi)
 
   exe 'echohl ' . a:hi
   for line in l:msg
-    echom "vim-go: " . line
+    echom "go.vim: " . line
   endfor
   echohl None
 endfunction
@@ -399,117 +269,6 @@ function! go#util#GetLines()
     let buf = map(buf, 'v:val."\r"')
   endif
   return buf
-endfunction
-
-" Convert the current buffer to the "archive" format of
-" golang.org/x/tools/go/buildutil:
-" https://godoc.org/golang.org/x/tools/go/buildutil#ParseOverlayArchive
-"
-" > The archive consists of a series of files. Each file consists of a name, a
-" > decimal file size and the file contents, separated by newlinews. No newline
-" > follows after the file contents.
-function! go#util#archive()
-    let l:buffer = join(go#util#GetLines(), "\n")
-    return expand("%:p:gs!\\!/!") . "\n" . strlen(l:buffer) . "\n" . l:buffer
-endfunction
-
-" Make a named temporary directory which starts with "prefix".
-"
-" Unfortunately Vim's tempname() is not portable enough across various systems;
-" see: https://github.com/mattn/vim-go/pull/3#discussion_r138084911
-function! go#util#tempdir(prefix) abort
-  " See :help tempfile
-  if go#util#IsWin()
-    let l:dirs = [$TMP, $TEMP, 'c:\tmp', 'c:\temp']
-  else
-    let l:dirs = [$TMPDIR, '/tmp', './', $HOME]
-  endif
-
-  let l:dir = ''
-  for l:d in dirs
-    if !empty(l:d) && filewritable(l:d) == 2
-      let l:dir = l:d
-      break
-    endif
-  endfor
-
-  if l:dir == ''
-    call go#util#EchoError('Unable to find directory to store temporary directory in')
-    return
-  endif
-
-  " Not great randomness, but "good enough" for our purpose here.
-  let l:rnd = sha256(printf('%s%s', localtime(), fnamemodify(bufname(''), ":p")))
-  let l:tmp = printf("%s/%s%s", l:dir, a:prefix, l:rnd)
-  call mkdir(l:tmp, 'p', 0700)
-  return l:tmp
-endfunction
-
-" Report if the user enabled a debug flag in g:go_debug.
-function! go#util#HasDebug(flag)
-  return index(go#config#Debug(), a:flag) >= 0
-endfunction
-
-function! go#util#OpenBrowser(url) abort
-    let l:cmd = go#config#PlayBrowserCommand()
-    if len(l:cmd) == 0
-        redraw
-        echohl WarningMsg
-        echo "It seems that you don't have general web browser. Open URL below."
-        echohl None
-        echo a:url
-        return
-    endif
-
-    " if setting starts with a !.
-    if l:cmd =~ '^!'
-        let l:cmd = substitute(l:cmd, '%URL%', '\=escape(shellescape(a:url), "#")', 'g')
-        silent! exec l:cmd
-    elseif cmd =~ '^:[A-Z]'
-        let l:cmd = substitute(l:cmd, '%URL%', '\=escape(a:url,"#")', 'g')
-        exec l:cmd
-    else
-        let l:cmd = substitute(l:cmd, '%URL%', '\=shellescape(a:url)', 'g')
-        call go#util#System(l:cmd)
-    endif
-endfunction
-
-function! go#util#ParseErrors(lines) abort
-  let errors = []
-
-  for line in a:lines
-    let fatalerrors = matchlist(line, '^\(fatal error:.*\)$')
-    let tokens = matchlist(line, '^\s*\(.\{-}\):\(\d\+\):\s*\(.*\)')
-
-    if !empty(fatalerrors)
-      call add(errors, {"text": fatalerrors[1]})
-    elseif !empty(tokens)
-      " strip endlines of form ^M
-      let out = substitute(tokens[3], '\r$', '', '')
-
-      call add(errors, {
-            \ "filename" : fnamemodify(tokens[1], ':p'),
-            \ "lnum"     : tokens[2],
-            \ "text"     : out,
-            \ })
-    elseif !empty(errors)
-      " Preserve indented lines.
-      " This comes up especially with multi-line test output.
-      if match(line, '^\s') >= 0
-        call add(errors, {"text": substitute(line, '\r$', '', '')})
-      endif
-    endif
-  endfor
-
-  return errors
-endfunction
-
-function! go#util#ShowInfo(info)
-  if empty(a:info)
-    return
-  endif
-
-  echo "vim-go: " | echohl Function | echon a:info | echohl None
 endfunction
 
 " restore Vi compatibility settings

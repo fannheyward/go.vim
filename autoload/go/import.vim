@@ -2,66 +2,16 @@
 " Use of this source code is governed by a BSD-style
 " license that can be found in the LICENSE file.
 "
-" import.vim: Vim commands to import/drop Go packages.
+" Check out the docs for more information at /doc/vim-go.txt
 "
-" This filetype plugin adds three new commands for go buffers:
-"
-"   :Import {path}
-"
-"       Import ensures that the provided package {path} is imported
-"       in the current Go buffer, using proper style and ordering.
-"       If {path} is already being imported, an error will be
-"       displayed and the buffer will be untouched.
-"
-"   :ImportAs {localname} {path}
-"
-"       Same as Import, but uses a custom local name for the package.
-"
-"   :Drop {path}
-"
-"       Remove the import line for the provided package {path}, if
-"       present in the current Go buffer.  If {path} is not being
-"       imported, an error will be displayed and the buffer will be
-"       untouched.
-"
-" If you would like to add shortcuts, you can do so by doing the following:
-"
-"   Import fmt
-"   au Filetype go nnoremap <buffer> <LocalLeader>f :Import fmt<CR>
-"
-"   Drop fmt
-"   au Filetype go nnoremap <buffer> <LocalLeader>F :Drop fmt<CR>
-"
-"   Import the word under your cursor
-"   au Filetype go nnoremap <buffer> <LocalLeader>k
-"       \ :exe 'Import ' . expand('<cword>')<CR>
-"
-" The backslash '\' is the default maplocalleader, so it is possible that
-" your vim is set to use a different character (:help maplocalleader).
-"
-" Options:
-"
-"   g:go_import_commands [default=1]
-"
-"       Flag to indicate whether to enable the commands listed above.
-"
-if exists("b:did_ftplugin_go_import")
-  finish
-endif
 
-if !exists("g:go_import_commands")
-  let g:go_import_commands = 1
-endif
+" don't spam the user when Vim is started in Vi compatibility mode
+let s:cpo_save = &cpo
+set cpo&vim
 
-if g:go_import_commands
-  command! -buffer -nargs=? Drop call s:SwitchImport(0, '', <f-args>)
-  command! -buffer -nargs=1 Import call s:SwitchImport(1, '', <f-args>)
-  command! -buffer -nargs=* ImportAs call s:SwitchImport(1, <f-args>)
-endif
-
-function! s:SwitchImport(enabled, localname, path)
+function! go#import#SwitchImport(enabled, localname, path) abort
   let view = winsaveview()
-  let path = a:path
+  let path = substitute(a:path, '^\s*\(.\{-}\)\s*$', '\1', '')
 
   " Quotes are not necessary, so remove them if provided.
   if path[0] == '"'
@@ -70,8 +20,20 @@ function! s:SwitchImport(enabled, localname, path)
   if path[len(path)-1] == '"'
     let path = strpart(path, 0, len(path) - 1)
   endif
+
+  " if given a trailing slash, eg. `github.com/user/pkg/`, remove it
+  if path[len(path)-1] == '/'
+    let path = strpart(path, 0, len(path) - 1)
+  endif
+
   if path == ''
     call s:Error('Import path not provided')
+    return
+  endif
+
+  let exists = go#tool#Exists(path)
+  if exists == -1
+    call s:Error("Can't find import: " . path)
     return
   endif
 
@@ -102,6 +64,9 @@ function! s:SwitchImport(enabled, localname, path)
       let packageline = line
       let appendline = line
 
+    elseif linestr =~# '^import\s\+(\+)'
+      let appendline = line
+      let appendstr = qlocalpath
     elseif linestr =~# '^import\s\+('
       let appendstr = qlocalpath
       let indentstr = 1
@@ -198,11 +163,19 @@ function! s:SwitchImport(enabled, localname, path)
         let linesdelta += 3
         let appendstr = qlocalpath
         let indentstr = 1
+        call append(appendline, appendstr)
+      elseif getline(appendline) =~# '^import\s\+(\+)'
+        call setline(appendline, 'import (')
+        call append(appendline + 0, appendstr)
+        call append(appendline + 1, ')')
+        let linesdelta -= 1
+        let indentstr = 1
+      else
+        call append(appendline, appendstr)
       endif
-      call append(appendline, appendstr)
       execute appendline + 1
       if indentstr
-        execute 'normal >>'
+        execute 'normal! >>'
       endif
       let linesdelta += 1
     endif
@@ -241,10 +214,13 @@ function! s:SwitchImport(enabled, localname, path)
 
 endfunction
 
-function! s:Error(s)
+
+function! s:Error(s) abort
   echohl Error | echo a:s | echohl None
 endfunction
 
-let b:did_ftplugin_go_import = 1
+" restore Vi compatibility settings
+let &cpo = s:cpo_save
+unlet s:cpo_save
 
-" vim:ts=4:sw=4:et
+" vim: sw=2 ts=2 et

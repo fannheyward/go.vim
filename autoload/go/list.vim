@@ -18,14 +18,10 @@ function! go#list#Window(listtype, ...) abort
     return
   endif
 
-  let height = go#config#ListHeight()
-  if height == 0
-    " prevent creating a large location height for a large set of numbers
-    if a:1 > 10
-      let height = 10
-    else
-      let height = a:1
-    endif
+  if a:1 > 10
+    let height = 10
+  else
+    let height = a:1
   endif
 
   if a:listtype == "locationlist"
@@ -109,25 +105,11 @@ endfunction
 
 " Close closes the location list
 function! go#list#Close(listtype) abort
-  let autoclose_window = go#config#ListAutoclose()
-  if !autoclose_window
-    return
-  endif
-
   if a:listtype == "locationlist"
     lclose
   else
     cclose
   endif
-endfunction
-
-function! s:listtype(listtype) abort
-  let listtype = go#config#ListType()
-  if empty(listtype)
-    return a:listtype
-  endif
-
-  return listtype
 endfunction
 
 " s:default_list_type_commands is the defaults that will be used for each of
@@ -158,7 +140,7 @@ let s:default_list_type_commands = {
   \ }
 
 function! go#list#Type(for) abort
-  let l:listtype = s:listtype(get(s:default_list_type_commands, a:for))
+  let l:listtype = get(s:default_list_type_commands, a:for)
   if l:listtype == "0"
     call go#util#EchoError(printf(
           \ "unknown list type command value found ('%s'). Please open a bug report in the vim-go repo.",
@@ -166,7 +148,7 @@ function! go#list#Type(for) abort
     let l:listtype = "quickfix"
   endif
 
-  return get(go#config#ListTypeCommands(), a:for, l:listtype)
+  return l:listtype
 endfunction
 
 " restore Vi compatibility settings

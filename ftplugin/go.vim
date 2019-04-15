@@ -15,5 +15,4 @@ setlocal comments=s1:/*,mb:*,ex:*/,://
 setlocal commentstring=//\ %s
 
 let b:undo_ftplugin = "setl fo< com< cms<"
-
-" vim:ts=4:sw=4:et
+" vim:ts=2:sw=2:et
