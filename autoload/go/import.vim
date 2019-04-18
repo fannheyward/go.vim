@@ -31,8 +31,8 @@ function! go#import#SwitchImport(enabled, localname, path) abort
     return
   endif
 
-  let exists = go#tool#Exists(path)
-  if exists == -1
+  let [l:out, l:err] = go#util#ExecInDir(['go', 'list', path])
+  if l:err != 0
     call s:Error("Can't find import: " . path)
     return
   endif
